@@ -1,15 +1,19 @@
 from enum import Enum, auto
 from typing import Tuple, Optional
 
+
 class MetaCommandResult(Enum):
+    """Statuses for meta command execution"""
     SUCCESS = auto()
     UNRECOGNIZED_COMMAND = auto()
 
 class PrepareResult(Enum):
+    """Statuses to be returned while parsing the command input by the users."""
     SUCCESS = auto()
     UNRECOGNIZED_STATEMENT = auto()
 
 class StatementType(Enum):
+    """Various statement types supported by the db engine."""
     INSERT = auto()
     SELECT = auto()
 
@@ -19,9 +23,11 @@ class Statement:
 
 
 def print_prompt():
+    """The main prompt to accept user inputs"""
     print("db >", end="", flush=True)
 
 def do_meta_command(command:str)->MetaCommandResult:
+    """This function handles the meta commands which starts with a ."""
     if command == '.exit':
         print("Goodbye!")
         exit(0)
