@@ -14,8 +14,13 @@ class MetaCommandResult(Enum):
 class PrepareResult(Enum):
     """Statuses to be returned while parsing the command input by the users."""
     SUCCESS = auto()
+    SYNTAX_ERROR = auto()
     UNRECOGNIZED_STATEMENT = auto()
 
+class ExecuteResult(Enum):
+    SUCCESS = auto()
+    TABLE_FULL = auto()
+    
 class StatementType(Enum):
     """Various statement types supported by the db engine."""
     INSERT = auto()
@@ -41,29 +46,29 @@ class Row:
         self.email = email
 
     def __str__(self):
-        f"({self.id}, {self.username}, {self.email})"
+        return f"({self.id}, {self.username}, {self.email})"
 
     def serialize(self)->bytes:
         """Convert row into a compact binary representation"""
         packed_id = struct.pack("I", self.id)
-        packed_username = self.username.encode('utf-8')[:USERNAME_SIZE].ljust(USERNAME_SIZE, b'\x00')
-        packed_email = self.email.encode('utf-8')[:EMAIL_SIZE].ljust(EMAIL_SIZE, b'\x00')
+        packed_username = self.username.encode('utf-8')[:self.USERNAME_SIZE].ljust(self.USERNAME_SIZE, b'\x00')
+        packed_email = self.email.encode('utf-8')[:self.EMAIL_SIZE].ljust(self.EMAIL_SIZE, b'\x00')
 
         return packed_id + packed_username + packed_email
 
     @staticmethod
     def deserialize(data:bytes)->'Row':
         """Convert binary data back to Row object"""
-        id_val = struct.unpack('I', data[ID_OFFSET:ID_OFFSET+ID_SIZE])[0]
-        username = data[USERNAME_OFFSET: USERNAME_OFFSET+USERNAME_SIZE].rtsrip(b'\x00').decode('utf-8')
-        email = data[EMAIL_OFFSET: EMAIL_OFFSET+EMAIL_SIZE].rstrip(b'\x00').decode('utf-8')
+        id_val = struct.unpack('I', data[Row.ID_OFFSET:Row.ID_OFFSET+Row.ID_SIZE])[0]
+        username = data[Row.USERNAME_OFFSET: Row.USERNAME_OFFSET+Row.USERNAME_SIZE].rstrip(b'\x00').decode('utf-8')
+        email = data[Row.EMAIL_OFFSET: Row.EMAIL_OFFSET+Row.EMAIL_SIZE].rstrip(b'\x00').decode('utf-8')
 
         return Row(id_val, username, email)
 
 class Table:
     """Represents the database table"""
     ROWS_PER_PAGE = PAGE_SIZE//Row.ROW_SIZE
-    TABLE_MAX_ROWS = TABLE_mAX_PAGES * ROWS_PER_PAGE
+    TABLE_MAX_ROWS = TABLE_MAX_PAGES * ROWS_PER_PAGE
 
     def __init__(self):
         self.num_rows = 0
@@ -80,7 +85,7 @@ class Table:
         row_offset = row_num%self.ROWS_PER_PAGE
         byte_offset = row_offset * Row.ROW_SIZE
         
-        return pagenum, byte_offset
+        return page_num, byte_offset
 
     def insert_row(self, row:Row):
         """Insert a row into the table"""
@@ -98,8 +103,9 @@ class Table:
         return rows
         
 class Statement:
-    def __init__(self, statement_type:StatementType)->None:
+    def __init__(self, statement_type:StatementType, row:Optional[Row])->None:
         self.type = statement_type
+        self.row_to_insert = row
 
 
 def print_prompt():
@@ -114,23 +120,38 @@ def do_meta_command(command:str)->MetaCommandResult:
     return MetaCommandResult.UNRECOGNIZED_COMMAND
 
 def prepare_statement(input_string:str)->Tuple[PrepareResult, Optional[Statement]]:
+    """This function parses the user input and returns the approriate result..."""
+    if input_string.startswith("insert"):
+        parts = input_string.split()
+        try:
+            id_val = int(parts[1])
+            username = parts[2]
+            email = parts[3]
+            row = Row(id_val, username, email)
+            return PrepareResult.SUCCESS, Statement(StatementType.INSERT, row)
+        except(ValueError, IndexError):
+            return PrepareResult.SYNTAX_ERROR, None
+            
+    elif input_string.startswith("select"):
+        return PrepareResult.SUCCESS, Statement(StatementType.SELECT, None)
 
-        if input_string.startswith("insert"):
-            return PrepareResult.SUCCESS, Statement(StatementType.INSERT)
-        elif input_string.startswith("select"):
-            return PrepareResult.SUCCESS, Statement(StatementType.SELECT)
+    return PrepareResult.UNRECOGNIZED_STATEMENT, None
 
-        return PrepareResult.UNRECOGNIZED_STATEMENT, None
-
-def execute_statement(statement: Statement)->None:
+def execute_statement(statement: Statement, table: Table)->ExecuteResult:
     if statement.type == StatementType.INSERT:
-        print("Insert is handled here")
+        if table.num_rows >= Table.TABLE_MAX_ROWS:
+            return ExecuteResult.TABLE_FULL
+        table.insert_row(statement.row_to_insert)
+        return ExecuteResult.SUCCESS
     elif statement.type == StatementType.SELECT:
-        print("Select is handled here")
-    
+        rows = table.select_all()
+        for row in rows:
+            print(row)
+        return ExecuteResult.SUCCESS
 
 def main():
     print_prompt()
+    table = Table()
     while True:
         try:
             user_input = input().strip()
@@ -144,11 +165,14 @@ def main():
             continue
 
         result, statement = prepare_statement(user_input)
+        if result == PrepareResult.SYNTAX_ERROR:
+            print(f"error while parsing the statement.")
+            continue
         if result == PrepareResult.UNRECOGNIZED_STATEMENT:
             print(f"unrecognized statement '{user_input}'.")
             continue
 
-        execute_statement(statement)
+        execute_statement(statement, table)
 
 if __name__ == '__main__':
     main()
