@@ -2,6 +2,10 @@ from enum import Enum, auto
 from typing import Tuple, Optional
 import struct
 
+#constant declarations
+PAGE_SIZE = 4096
+TABLE_MAX_PAGES = 100
+
 class MetaCommandResult(Enum):
     """Statuses for meta command execution"""
     SUCCESS = auto()
@@ -48,7 +52,7 @@ class Row:
         return packed_id + packed_username + packed_email
 
     @staticmethod
-    def deserialize(self, data:bytes)->'Row':
+    def deserialize(data:bytes)->'Row':
         """Convert binary data back to Row object"""
         id_val = struct.unpack('I', data[ID_OFFSET:ID_OFFSET+ID_SIZE])[0]
         username = data[USERNAME_OFFSET: USERNAME_OFFSET+USERNAME_SIZE].rtsrip(b'\x00').decode('utf-8')
@@ -56,6 +60,43 @@ class Row:
 
         return Row(id_val, username, email)
 
+class Table:
+    """Represents the database table"""
+    ROWS_PER_PAGE = PAGE_SIZE//Row.ROW_SIZE
+    TABLE_MAX_ROWS = TABLE_mAX_PAGES * ROWS_PER_PAGE
+
+    def __init__(self):
+        self.num_rows = 0
+        self.pages = [None] * TABLE_MAX_PAGES
+
+    def row_slot(self, row_num:int)->tuple[int, int]:
+        """Calculate which page and byte offset a row must be inserted.
+            Returns a tuple (page_num, byte_offset)"""
+        page_num = row_num//self.ROWS_PER_PAGE
+
+        if self.pages[page_num] is None:
+            self.pages[page_num] = bytearray(PAGE_SIZE)
+
+        row_offset = row_num%self.ROWS_PER_PAGE
+        byte_offset = row_offset * Row.ROW_SIZE
+        
+        return pagenum, byte_offset
+
+    def insert_row(self, row:Row):
+        """Insert a row into the table"""
+        page_num, byte_offset = self.row_slot(self.num_rows)
+        serialized = row.serialize()
+        self.pages[page_num][byte_offset:byte_offset+Row.ROW_SIZE] = serialized
+        self.num_rows +=1
+
+    def select_all(self)->list[Row]:
+        rows = []
+        for i in range(self.num_rows):
+            page_num, byte_offset = self.row_slot(i)
+            row_data = bytes(self.pages[page_num][byte_offset: byte_offset+Row.ROW_SIZE])
+            rows.append(Row.deserialize(row_data))
+        return rows
+        
 class Statement:
     def __init__(self, statement_type:StatementType)->None:
         self.type = statement_type
