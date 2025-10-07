@@ -1,6 +1,6 @@
 from enum import Enum, auto
 from typing import Tuple, Optional
-
+import struct
 
 class MetaCommandResult(Enum):
     """Statuses for meta command execution"""
@@ -16,6 +16,45 @@ class StatementType(Enum):
     """Various statement types supported by the db engine."""
     INSERT = auto()
     SELECT = auto()
+
+class Row:
+    """Represents a row in our database table"""
+    
+    #constant declarations at the row level
+    ID_SIZE = 4
+    USERNAME_SIZE = 32
+    EMAIL_SIZE = 255
+    ROW_SIZE = ID_SIZE + USERNAME_SIZE + EMAIL_SIZE
+    
+    #offset calculations
+    ID_OFFSET = 0
+    USERNAME_OFFSET = ID_OFFSET + ID_SIZE
+    EMAIL_OFFSET = USERNAME_OFFSET + USERNAME_SIZE
+     
+    def __init__(self, id:int=0, username:str="", email:str=""):
+        self.id = id
+        self.username = username
+        self.email = email
+
+    def __str__(self):
+        f"({self.id}, {self.username}, {self.email})"
+
+    def serialize(self)->bytes:
+        """Convert row into a compact binary representation"""
+        packed_id = struct.pack("I", self.id)
+        packed_username = self.username.encode('utf-8')[:USERNAME_SIZE].ljust(USERNAME_SIZE, b'\x00')
+        packed_email = self.email.encode('utf-8')[:EMAIL_SIZE].ljust(EMAIL_SIZE, b'\x00')
+
+        return packed_id + packed_username + packed_email
+
+    @staticmethod
+    def deserialize(self, data:bytes)->'Row':
+        """Convert binary data back to Row object"""
+        id_val = struct.unpack('I', data[ID_OFFSET:ID_OFFSET+ID_SIZE])[0]
+        username = data[USERNAME_OFFSET: USERNAME_OFFSET+USERNAME_SIZE].rtsrip(b'\x00').decode('utf-8')
+        email = data[EMAIL_OFFSET: EMAIL_OFFSET+EMAIL_SIZE].rstrip(b'\x00').decode('utf-8')
+
+        return Row(id_val, username, email)
 
 class Statement:
     def __init__(self, statement_type:StatementType)->None:
