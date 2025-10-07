@@ -27,6 +27,22 @@ def do_meta_command(command:str)->MetaCommandResult:
         exit(0)
     return MetaCommandResult.UNRECOGNIZED_COMMAND
 
+def prepare_statement(input_string:str)->Tuple[PrepareResult, Optional[Statement]]:
+
+        if input_string.startswith("insert"):
+            return PrepareResult.SUCCESS, Statement(StatementType.INSERT)
+        elif input_string.startswith("select"):
+            return PrepareResult.SUCCESS, Statement(StatementType.SELECT)
+
+        return PrepareResult.UNRECOGNIZED_STATEMENT, None
+
+def execute_statement(statement: Statement)->None:
+    if statement.type == StatementType.INSERT:
+        print("Insert is handled here")
+    elif statement.type == StatementType.SELECT:
+        print("Select is handled here")
+    
+
 def main():
     print_prompt()
     while True:
@@ -40,8 +56,13 @@ def main():
             if result == MetaCommandResult.UNRECOGNIZED_COMMAND:
                 print(f"unrecognized command '{user_input}.'")
             continue
-        else:
+
+        result, statement = prepare_statement(user_input)
+        if result == PrepareResult.UNRECOGNIZED_STATEMENT:
             print(f"unrecognized statement '{user_input}'.")
+            continue
+
+        execute_statement(statement)
 
 if __name__ == '__main__':
     main()
